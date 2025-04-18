@@ -2,20 +2,20 @@
 #include <iostream>
 #include <chrono>
 #include <string>
-#include <filesystem> 
-#include <algorithm>
+#include <filesystem>
+#include <algorithm> 
 
-namespace fs = std::filesystem; // Alias
+namespace fs = std::filesystem;
 
 int main() {
-   
-    const std::string dataFolder = "hdb_data_store"; 
+
+    const std::string dataFolder = "hdb_data_store";
     const std::string csvFile = "ResalePricesSingapore.csv";
-    const std::string checkFilename = "col_months.dat"; 
+    const std::string checkFilename = "col_months.dat";
 
 
     std::cout << "Using data folder: " << dataFolder << std::endl;
-    ColumnStore store(dataFolder); 
+    ColumnStore store(dataFolder);
 
     fs::path checkFilePath = fs::path(dataFolder) / checkFilename;
     bool dataExistsOnDisk = fs::exists(checkFilePath);
@@ -32,12 +32,11 @@ int main() {
                   << "' (checked: " << checkFilename << "). Processing CSV file '" << csvFile << "'..." << std::endl;
         store.loadFromCSV(csvFile);
 
-        // Only save if loading CSV was successful (produced rows)
         if (store.getRowCount() > 0) {
-             std::cout << "Saving processed data to disk for future use..." << std::endl;
-             store.saveToDisk();
+            std::cout << "Saving processed data to disk for future use..." << std::endl;
+            store.saveToDisk();
         } else {
-             std::cerr << "Warning: No records loaded from CSV. Nothing to save." << std::endl;
+            std::cerr << "Warning: No records loaded from CSV. Nothing to save." << std::endl;
         }
     }
 
@@ -52,26 +51,23 @@ int main() {
         // Print first few records as a sample
         std::cout << "\nSample data (first 5 records):" << std::endl;
         std::cout << "Month\tTown\tFlat Type\tFloor Area\tResale Price" << std::endl;
-        std::cout << "----------------------------------------------------------------" << std::endl; // Adjusted separator length
+        std::cout << "----------------------------------------------------------------" << std::endl;
 
         size_t sampleSize = std::min(store.getRowCount(), static_cast<size_t>(5));
         for (size_t i = 0; i < sampleSize; i++) {
-            try {
-                std::cout << store.getMonths()->getValue(i) << "\t"
-                          << store.getTowns()->getValue(i) << "\t"
-                          << store.getFlatTypes()->getValue(i) << "\t"
-                          << store.getFloorAreas()->getValue(i) << "\t\t" // Extra tab maybe needed
-                          << store.getResalePrices()->getValue(i) << std::endl;
-            } catch (const std::out_of_range& e) {
-                 std::cerr << "Error getting sample data at index " << i << ": " << e.what() << std::endl;
-                 break;
-            }
+            // Access data using getData() and [] operator
+            std::cout << store.getMonths()->getData()[i] << "\t"
+                      << store.getTowns()->getData()[i] << "\t"
+                      << store.getFlatTypes()->getData()[i] << "\t"
+                      << store.getFloorAreas()->getData()[i] << "\t\t" 
+                      << store.getResalePrices()->getData()[i] << std::endl;
         }
 
         std::cout << "\nColumn store is ready for querying." << std::endl;
-        std::cout << "Use the column accessor methods (e.g., store.getTowns()->getValue(index)) to retrieve data." << std::endl;
+        std::cout << "Use the column accessor methods (e.g., store.getTowns()->getData()[index]) to retrieve data." << std::endl;
+
     } else {
-         std::cout << "No data loaded into the column store." << std::endl;
+        std::cout << "No data loaded into the column store." << std::endl;
     }
 
     return 0;
