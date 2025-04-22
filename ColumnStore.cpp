@@ -7,6 +7,7 @@
 #include <vector>
 #include <cstring>
 #include <cmath>
+#include "Constants.h"
 
 namespace fs = std::filesystem;
 
@@ -329,14 +330,14 @@ void ColumnStore::loadFromCSV(const std::string& csvFilename) {
             double resalePrice = std::stod(tokens[9]);
 
             // Add to columns
-            months->addValue(month);
-            towns->addValue(town);
-            flatTypes->addValue(flatType);
-            blocks->addValue(block);
-            streetNames->addValue(streetName);
-            storeyRanges->addValue(storeyRange);
+            months->addValue(toUpper(month));
+            towns->addValue(toUpper(town));
+            flatTypes->addValue(toUpper(flatType));
+            blocks->addValue(toUpper(block));
+            streetNames->addValue(toUpper(streetName));
+            storeyRanges->addValue(toUpper(storeyRange));
             floorAreas->addValue(floorArea);
-            flatModels->addValue(flatModel);
+            flatModels->addValue(toUpper(flatModel));
             leaseCommenceDates->addValue(leaseDate);
             resalePrices->addValue(resalePrice);
 
@@ -466,4 +467,54 @@ void ColumnStore::loadFromDisk() {
 // Get number of rows
 size_t ColumnStore::getRowCount() const {
     return rowCount;
+}
+
+std::vector<std::pair<int, ColumnStore::DataRow>>
+ColumnStore::fetchRows(const std::vector<int>& recordIndices) const {
+    // 1) Fetch each column’s (idx, value) pairs
+    auto mPairs  = months->fetchRecords(recordIndices);
+    auto tPairs  = towns->fetchRecords(recordIndices);
+    auto ftPairs = flatTypes->fetchRecords(recordIndices);
+    auto bPairs  = blocks->fetchRecords(recordIndices);
+    auto snPairs = streetNames->fetchRecords(recordIndices);
+    auto srPairs = storeyRanges->fetchRecords(recordIndices);
+    auto faPairs = floorAreas->fetchRecords(recordIndices);
+    auto fmPairs = flatModels->fetchRecords(recordIndices);
+    auto ldPairs = leaseCommenceDates->fetchRecords(recordIndices);
+    auto rpPairs = resalePrices->fetchRecords(recordIndices);
+
+    // 2) Build lookup maps
+    std::unordered_map<int, std::string>  mMap,  tMap,  ftMap,  bMap,  snMap,  srMap,  fmMap;
+    std::unordered_map<int, double>       faMap, rpMap;
+    std::unordered_map<int, int>          ldMap;
+
+    for (auto &p : mPairs)  mMap [p.first] = p.second;
+    for (auto &p : tPairs)  tMap [p.first] = p.second;
+    for (auto &p : ftPairs) ftMap[p.first] = p.second;
+    for (auto &p : bPairs)  bMap [p.first] = p.second;
+    for (auto &p : snPairs) snMap[p.first] = p.second;
+    for (auto &p : srPairs) srMap[p.first] = p.second;
+    for (auto &p : faPairs) faMap[p.first] = p.second;
+    for (auto &p : fmPairs) fmMap[p.first] = p.second;
+    for (auto &p : ldPairs) ldMap[p.first] = p.second;
+    for (auto &p : rpPairs) rpMap[p.first] = p.second;
+
+    // 3) Assemble rows in original order
+    std::vector<std::pair<int, DataRow>> rows;
+    rows.reserve(recordIndices.size());
+    for (int idx : recordIndices) {
+        DataRow row;
+        row.month       = mMap[idx];
+        row.town        = tMap[idx];
+        row.flatType    = ftMap[idx];
+        row.block       = bMap[idx];
+        row.streetName  = snMap[idx];
+        row.storeyRange = srMap[idx];
+        row.floorArea   = faMap[idx];
+        row.flatModel   = fmMap[idx];
+        row.leaseDate   = ldMap[idx];
+        row.resalePrice = rpMap[idx];
+        rows.emplace_back(idx, std::move(row));
+    }
+    return rows;
 }

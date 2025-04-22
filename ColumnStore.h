@@ -9,9 +9,16 @@
 #include <cstring>
 #include <cmath>
 #include <sstream>
+#include <fstream>
+#include <unordered_map>
+#include <utility>
+#include <cctype>
+#include "Constants.h"
 
-const size_t BLOCK_SIZE = 512;
-const size_t FIXED_STRING_LEN = 64;
+inline std::string toUpper(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){return std::toupper(c);});
+    return s;
+}
 
 class ColumnStore;
 
@@ -41,6 +48,7 @@ public:
     void clear() override { data.clear(); }
     void storeToDisk() override;
     void loadFromDisk() override; 
+    std::vector<std::pair<int, T>> fetchRecords(const std::vector<int>& recordIndices) const;
 
     const std::vector<T>& getData() const { return data; }
 
@@ -74,6 +82,22 @@ public:
     void loadFromDisk();
     size_t getRowCount() const;
     std::string getDataFolderPath() const { return dataFolderPath; } 
+
+    struct DataRow {
+        std::string month;
+        std::string town;
+        std::string flatType;
+        std::string block;
+        std::string streetName;
+        std::string storeyRange;
+        double      floorArea;
+        std::string flatModel;
+        int         leaseDate;
+        double      resalePrice;
+    };
+
+    // fetchRows: given a list of record IDs, return (id, DataRow) for each
+    std::vector<std::pair<int, DataRow>> fetchRows(const std::vector<int>& recordIndices) const;
 
     // Public Accessor methods for columns
     const Column<std::string>* getMonths() const { return months.get(); }
@@ -110,6 +134,97 @@ template <> void Column<double>::storeToDisk();
 template <> void Column<double>::loadFromDisk();
 template <> void Column<std::string>::storeToDisk();
 template <> void Column<std::string>::loadFromDisk();
+
+// Generic implementation for trivially-copyable types (int, double, etc.)
+template<typename T>
+inline std::vector<std::pair<int, T>> Column<T>::fetchRecords(const std::vector<int>& recordIndices) const {
+    std::vector<std::pair<int, T>> out;
+    std::ifstream file(fullFilePath, std::ios::binary);
+    if (!file) return out;
+
+    size_t count = 0;
+    file.read(reinterpret_cast<char*>(&count), sizeof(size_t));
+    if (!file) return out;
+
+    const size_t valueSize = sizeof(T);
+    const size_t valuesPerBlock = BLOCK_SIZE / valueSize;
+    std::unordered_map<size_t, std::vector<int>> blockToIndices;
+
+    // Group indices by block
+    for (int idx : recordIndices) {
+        if (idx < 0 || static_cast<size_t>(idx) >= count) continue;
+        size_t block = idx / valuesPerBlock;
+        int  local = idx % valuesPerBlock;
+        blockToIndices[block].push_back(local);
+    }
+
+    std::vector<char> buffer(BLOCK_SIZE);
+    for (auto& kv : blockToIndices) {
+        size_t blockNum = kv.first;
+        auto const& offs = kv.second;
+
+        // Seek to this block
+        file.seekg(sizeof(size_t) + std::streamoff(blockNum) * BLOCK_SIZE, std::ios::beg);
+        file.read(buffer.data(), BLOCK_SIZE);
+        size_t bytesRead = file.gcount();
+
+        // Extract each requested value
+        for (int local : offs) {
+            size_t byteOff = local * valueSize;
+            if (byteOff + valueSize <= bytesRead) {
+                T val;
+                std::memcpy(&val, buffer.data() + byteOff, valueSize);
+                int recordIdx = static_cast<int>(blockNum * valuesPerBlock + local);
+                out.emplace_back(recordIdx, val);
+            }
+        }
+    }
+    return out;
+}
+
+// Specialization for std::string columns
+template<>
+inline std::vector<std::pair<int, std::string>> Column<std::string>::fetchRecords(const std::vector<int>& recordIndices) const {
+    std::vector<std::pair<int, std::string>> out;
+    std::ifstream file(fullFilePath, std::ios::binary);
+    if (!file) return out;
+
+    size_t count = 0;
+    file.read(reinterpret_cast<char*>(&count), sizeof(size_t));
+    if (!file) return out;
+
+    const size_t strPerBlock = BLOCK_SIZE / FIXED_STRING_LEN;
+    std::unordered_map<size_t, std::vector<int>> blockToIndices;
+
+    for (int idx : recordIndices) {
+        if (idx < 0 || static_cast<size_t>(idx) >= count) continue;
+        size_t block = idx / strPerBlock;
+        int local = idx % strPerBlock;
+        blockToIndices[block].push_back(local);
+    }
+
+    std::vector<char> buffer(BLOCK_SIZE);
+    for (auto& kv : blockToIndices) {
+        size_t blockNum = kv.first;
+        auto const& offs = kv.second;
+
+        file.seekg(sizeof(size_t) + std::streamoff(blockNum) * BLOCK_SIZE, std::ios::beg);
+        file.read(buffer.data(), BLOCK_SIZE);
+        size_t bytesRead = file.gcount();
+
+        for (int local : offs) {
+            size_t byteOff = local * FIXED_STRING_LEN;
+            if (byteOff < bytesRead) {
+                char* ptr = buffer.data() + byteOff;
+                size_t len = strnlen(ptr, FIXED_STRING_LEN);
+                std::string val(ptr, len);
+                int recordIdx = static_cast<int>(blockNum * strPerBlock + local);
+                out.emplace_back(recordIdx, val);
+            }
+        }
+    }
+    return out;
+}
 
 
 #endif
