@@ -1,0 +1,5 @@
+Year,Month,town,Category,Value
+2022,07,YISHUN,AVG(Price),522195.45
+2022,07,YISHUN,MIN(Price),325000.00
+2022,07,YISHUN,SD(Price),98599.47
+2022,07,YISHUN,MIN(Price_per_sqm),3617.79
